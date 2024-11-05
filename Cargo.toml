@@ -1,0 +1,17 @@
+[package]
+name = "zk_stark_server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"  # Required for StreamExt and SinkExt
+futures-channel = "0.3"  # Add this line
+url = "2"             # Required for parsing the URL
+winterfell = "0.9.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_bytes = "0.11"  # Add this crate to handle byte arrays in serde
+base64 = "0.22.1"
+serde_with = "3.9.0"
