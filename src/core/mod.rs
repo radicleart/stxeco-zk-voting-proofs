@@ -1,9 +1,9 @@
-use base64::{alphabet, engine::{self, general_purpose}, Engine};
+use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};  use core::fmt;
 // Import serde_with for handling u128
 use std::result::Result;
-use crate::{shoe_size::{ShoeSizeProofGenerator, ShoeSizeProofVerifier}, vdf::{VdfProofGenerator, VdfProofVerifier}};
+use crate::{stacks_voting::{SignatureData, StacksVotingProofGenrator, StacksVotingProofVerifier}, vdf::{VdfProofGenerator, VdfProofVerifier}};
 
 // Assuming you are using some kind of error type, define it or use a generic one
 #[derive(Debug)]
@@ -26,11 +26,13 @@ impl fmt::Display for Error {
     }
 }
 
-
-
 pub trait ProofGenerator {
     fn generate_proof(start: u128, n: usize) -> (Vec<u8>, u128);
 }
+pub trait VotingProofGenerator {
+    fn generate_proof(data: SignatureData) -> (Vec<u8>, u128);
+}
+
 
 pub trait ProofVerifier {
     fn verify_proof(start: u128, result_in: u128, proof: Vec<u8>) -> bool;
@@ -45,12 +47,15 @@ enum ApplicationMessage {
 }
 
 #[derive(serde::Serialize)]
+#[derive(serde::Deserialize)]
+#[derive(Debug)]
 pub struct VerificationResponse {
     ok : bool,
     error: String
 }
 
-#[derive(serde::Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
+
 pub enum ApplicationResponseMessage {
     ProofGenerationResponse(ProofResponse),
     ProofVerificationResponse(VerificationResponse),
@@ -58,17 +63,16 @@ pub enum ApplicationResponseMessage {
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "proof_type")]  // Nested message type for proof generation
+#[serde(tag = "proof_type")]
+
 enum ProofGenerationMessage {
     VdfProof {
         #[serde_as(as = "DisplayFromStr")]
         start: u128,
         n: usize,
     },
-    ShoeSizeProof {
-        #[serde_as(as = "DisplayFromStr")]
-        start: u128,
-        n: usize,
+    StacksVotingProof {
+        signature_data: SignatureData
     },
 }
 #[derive(Serialize, Deserialize, Debug)]
@@ -81,7 +85,7 @@ pub enum ProofResponse {
         result: String,
         proof: String
     },
-    ShoeSizeProof {
+    StacksVotingProof {
         result: String,
         proof: String
     },
@@ -99,7 +103,7 @@ enum ProofVerificationMessage {
         #[serde(with = "serde_bytes")]  // Handle Vec<u8> as a byte array
         proof: Vec<u8>,
     },
-    ShoeSizeProof {
+    StacksVotingProof {
         #[serde_as(as = "DisplayFromStr")]
         start: u128,
         #[serde_as(as = "DisplayFromStr")]
@@ -131,14 +135,14 @@ pub fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Error> {
                     let application_response: ApplicationResponseMessage = ApplicationResponseMessage::ProofGenerationResponse(response);
                     return Ok(application_response);
                 }
-                ProofGenerationMessage::ShoeSizeProof { start, n } => {
-                    let (proof, result) = ShoeSizeProofGenerator::generate_proof(start, n);
+                ProofGenerationMessage::StacksVotingProof { signature_data } => {
+                    let (proof, result) = StacksVotingProofGenrator::generate_proof(signature_data);
                     let b64_proof = general_purpose::STANDARD.encode(proof);
-                    let response: ProofResponse = ProofResponse::VdfProof {
-                        result: result.to_string(),            // Result from the proof generation
+                    let response = ProofResponse::StacksVotingProof {
+                        result: result.to_string(),
                         proof: b64_proof,
                     };
-                    let application_response: ApplicationResponseMessage = ApplicationResponseMessage::ProofGenerationResponse(response);
+                    let application_response = ApplicationResponseMessage::ProofGenerationResponse(response);
                     return Ok(application_response);
                 }
             }
@@ -155,8 +159,8 @@ pub fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Error> {
                     let application_response: ApplicationResponseMessage = ApplicationResponseMessage::ProofVerificationResponse(response);
                     return Ok(application_response);
                 }
-                ProofVerificationMessage::ShoeSizeProof { start, result, proof } => {
-                    let result = ShoeSizeProofVerifier::verify_proof(start, result, proof);
+                ProofVerificationMessage::StacksVotingProof { start, result, proof } => {
+                    let result = StacksVotingProofVerifier::verify_proof(start, result, proof);
                     let response: VerificationResponse = VerificationResponse {
                         ok:result,            // Result from the proof generation
                         error: "None".to_string(),

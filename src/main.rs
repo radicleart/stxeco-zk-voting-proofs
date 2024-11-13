@@ -20,7 +20,6 @@
 use core::handle_message;
 use std::{
     collections::HashMap,
-    env,
     io::Error as IoError,
     net::SocketAddr,
     sync::{Arc, Mutex},
@@ -29,17 +28,53 @@ use std::{
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
+use routes::transactions_routes;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 mod core;
 mod vdf;
-mod shoe_size;
+mod stacks_voting;
+mod routes;
+
 type Tx = UnboundedSender<Message>;
-type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
+pub type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
+type IoResult<T> = std::io::Result<T>;
 
 
-async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
+#[tokio::main]
+async fn main() -> Result<(), IoError> {
+    let addr = "127.0.0.1:9001".to_string();
+    let ws_state = PeerMap::new(Mutex::new(HashMap::new()));
+
+    // Set up WebSocket listener (as before)
+    let try_socket = TcpListener::bind(&addr).await;
+    let listener = try_socket.expect("Failed to bind WebSocket listener");
+    println!("WebSocket server listening on: {}", addr);
+
+    // Initialize routes with the shared state
+    let http_state = ws_state.clone();
+    let routes = transactions_routes(http_state);
+
+    // Start the Warp server for HTTP endpoints concurrently with the WebSocket server
+    tokio::select! {
+        _ = run_websocket_server(listener, ws_state.clone()) => {},
+        _ = warp::serve(routes).run(([127, 0, 0, 1], 3030)) => {},
+    }
+
+    Ok(())
+}
+
+
+// WebSocket server function to handle incoming connections
+async fn run_websocket_server(listener: TcpListener, state: PeerMap) -> IoResult<()> {
+    while let Ok((stream, addr)) = listener.accept().await {
+        tokio::spawn(handle_ws_connection(state.clone(), stream, addr));
+    }
+    Ok(())
+}
+
+async fn handle_ws_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
     println!("Incoming TCP connection from: {}", addr);
 
     let ws_stream = tokio_tungstenite::accept_async(raw_stream)
@@ -88,23 +123,4 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
 
     println!("{} disconnected", &addr);
     peer_map.lock().unwrap().remove(&addr);
-}
-
-#[tokio::main]
-async fn main() -> Result<(), IoError> {
-    let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:9001".to_string());
-
-    let state = PeerMap::new(Mutex::new(HashMap::new()));
-
-    // Create the event loop and TCP listener we'll accept connections on.
-    let try_socket = TcpListener::bind(&addr).await;
-    let listener = try_socket.expect("Failed to bind");
-    println!("Listening on: {}", addr);
-
-    // Let's spawn the handling of each connection in a separate task.
-    while let Ok((stream, addr)) = listener.accept().await {
-        tokio::spawn(handle_connection(state.clone(), stream, addr));
-    }
-
-    Ok(())
 }

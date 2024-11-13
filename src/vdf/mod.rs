@@ -276,11 +276,11 @@ pub fn build_do_work_trace(start: BaseElement, n: usize) -> TraceTable<BaseEleme
     trace
 }
 
-fn do_work(start: BaseElement, n: usize) -> BaseElement {
-   let mut result = start;
-   for _ in 1..n {
-       result = result.exp(3) + BaseElement::new(42);
-   }
-   result
-}
+// fn do_work(start: BaseElement, n: usize) -> BaseElement {
+//    let mut result = start;
+//    for _ in 1..n {
+//        result = result.exp(3) + BaseElement::new(42);
+//    }
+//    result
+// }
 
