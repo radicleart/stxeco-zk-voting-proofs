@@ -9,12 +9,9 @@ use winterfell::{
     DefaultTraceLde, ProofOptions, Prover, StarkDomain, Trace, TracePolyTable, TraceTable,
 };
 use serde::{Deserialize, Serialize};
-pub mod utils;
-pub mod transactions;
 
-// pub use utils::fetch_all_transactions;
+use super::{ProofVerifier, VotingProofGenerator};
 
-use crate::core::{ProofVerifier, VotingProofGenerator};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Domain {
@@ -26,22 +23,22 @@ pub struct Domain {
 #[derive(Serialize, Deserialize, Debug)]
 
 pub struct MessageInputs {
-    message: String,
-    vote: String,
-    proposal: String,
-    balance_at_height: u64,
-    burn_start_height: u64,
-    burn_end_height: u64,
+    pub message: String,
+    pub vote: String,
+    pub proposal: String,
+    pub balance_at_height: u64,
+    pub burn_start_height: u64,
+    pub burn_end_height: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SignatureData {
-    message_inputs: MessageInputs,
-    public_key: String,
-    hash: String,
-    signature: String,
-    message: String,
-    domain: Domain,
+    pub  message_inputs: MessageInputs,
+    pub public_key: String,
+    pub hash: String,
+    pub signature: String,
+    pub message: String,
+    pub domain: Option<Domain>,
 }
 
 // Generation

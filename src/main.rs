@@ -1,23 +1,4 @@
-//! A chat server that broadcasts a message to all connections.
-//!
-//! This is a simple line-based server which accepts WebSocket connections,
-//! reads lines from those connections, and broadcasts the lines to all other
-//! connected clients.
-//!
-//! You can test this out by running:
-//!
-//!     cargo run --example server 127.0.0.1:12345
-//!
-//! And then in another window run:
-//!
-//!     cargo run --example client ws://127.0.0.1:12345/
-//!
-//! You can run the second command in multiple windows and then chat between the
-//! two, seeing the messages from the other client as they're received. For all
-//! connected clients they'll all join the same room and see everyone else's
-//! messages.
-
-use core::handle_message;
+use proofs::handle_message;
 use std::{
     collections::HashMap,
     io::Error as IoError,
@@ -28,14 +9,11 @@ use std::{
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
-use routes::transactions_routes;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-mod core;
-mod vdf;
-mod stacks_voting;
-mod routes;
+mod proofs;
+pub mod stacks;
 
 type Tx = UnboundedSender<Message>;
 pub type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
@@ -54,7 +32,7 @@ async fn main() -> Result<(), IoError> {
 
     // Initialize routes with the shared state
     let http_state = ws_state.clone();
-    let routes = transactions_routes(http_state);
+    let routes = stacks::stacks_routes();
 
     // Start the Warp server for HTTP endpoints concurrently with the WebSocket server
     tokio::select! {
@@ -91,7 +69,7 @@ async fn handle_ws_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: So
     let broadcast_incoming = incoming.try_for_each(|msg| {
         let msg_text = msg.to_text().unwrap();
 
-        let response: Result<core::ApplicationResponseMessage, core::Error> = handle_message(msg_text);
+        let response: Result<proofs::ApplicationResponseMessage, proofs::Error> = handle_message(msg_text);
         let response_message:String;
 
         // Now match on the `response` to handle both Ok and Err cases

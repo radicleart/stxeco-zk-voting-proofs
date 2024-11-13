@@ -1,9 +1,13 @@
 use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};  use core::fmt;
+use serde_with::{serde_as, DisplayFromStr};
+use stacks_voting::{SignatureData, StacksVotingProofGenrator, StacksVotingProofVerifier};
+use vdf::{VdfProofGenerator, VdfProofVerifier};  use core::fmt;
 // Import serde_with for handling u128
 use std::result::Result;
-use crate::{stacks_voting::{SignatureData, StacksVotingProofGenrator, StacksVotingProofVerifier}, vdf::{VdfProofGenerator, VdfProofVerifier}};
+
+pub mod vdf;
+pub mod stacks_voting;
 
 // Assuming you are using some kind of error type, define it or use a generic one
 #[derive(Debug)]
