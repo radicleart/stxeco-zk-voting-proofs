@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Transaction {
-    tx: TransactionDetails,
-    stx_sent: String,
-    stx_received: String,
+    pub tx: TransactionDetails,
+    pub stx_sent: String,
+    pub stx_received: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -16,7 +16,7 @@ pub struct TransactionDetails {
     sender_address: String,
     sponsored: bool,
     block_hash: String,
-    block_height: u64,
+    pub block_height: u64,
     block_time: u64,
     block_time_iso: String,
     burn_block_time: u64,

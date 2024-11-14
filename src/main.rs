@@ -7,18 +7,18 @@ use std::{
 };
 
 use futures_channel::mpsc::{unbounded, UnboundedSender};
-use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
+use futures_util::{stream::TryStreamExt, StreamExt};
 
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::{self, protocol::Message};
 
 mod proofs;
 pub mod stacks;
 
 type Tx = UnboundedSender<Message>;
-pub type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 type IoResult<T> = std::io::Result<T>;
-
+type PeerMap = Arc<Mutex<HashMap<SocketAddr, UnboundedSender<Message>>>>;
+//type PeerMap = Arc<Mutex<HashMap<SocketAddr, tokio::sync::mpsc::UnboundedSender<tungstenite::Message>>>>;
 
 #[tokio::main]
 async fn main() -> Result<(), IoError> {
@@ -60,45 +60,37 @@ async fn handle_ws_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: So
         .expect("Error during the websocket handshake occurred");
     println!("WebSocket connection established: {}", addr);
 
-    // Insert the write part of this peer to the peer map.
     let (tx, rx) = unbounded();
     peer_map.lock().unwrap().insert(addr, tx);
 
     let (outgoing, incoming) = ws_stream.split();
+    //let outgoing = Arc::new(Mutex::new(outgoing));  // Wrap `outgoing` in Arc<Mutex<...>> here
 
+    // Process incoming messages and respond asynchronously
     let broadcast_incoming = incoming.try_for_each(|msg| {
-        let msg_text = msg.to_text().unwrap();
+        let msg_text = msg.to_text().unwrap().to_string();
+        //let peer_map_clone = peer_map.clone();
+        //let outgoing = Arc::clone(&outgoing);  // Clone the Arc for each message
 
-        let response: Result<proofs::ApplicationResponseMessage, proofs::Error> = handle_message(msg_text);
-        let response_message:String;
-
-        // Now match on the `response` to handle both Ok and Err cases
-        match response {
-            Ok(success_response) => {
-                // Handle the successful response
-                response_message = serde_json::to_string(&success_response).unwrap()
+        async move {
+            // Handle the message asynchronously
+            match handle_message(&msg_text).await {
+                Ok(response_message) => {
+                    // Lock outgoing for this async block
+                    //let mut outgoing = outgoing.lock();
+                    // Send the response back to the client
+                    //outgoing.send(Message::Text(response_message)).await?;
+                    eprintln!("response_message: {:?}", response_message);
+                }
+                Err(e) => {
+                    eprintln!("Error handling message: {:?}", e);
+                }
             }
-            Err(e) => {
-                response_message = e.to_string();
-            }
-        }
-        
-        let peers = peer_map.lock().unwrap();
-        let ws_message = Message::Text(response_message);
 
-        // Send the proof and result back to the client
-        for (_, ws_sink) in peers.iter() {
-            ws_sink.unbounded_send(ws_message.clone()).unwrap();
+            // Explicitly annotate the return type to satisfy try_for_each
+            Ok::<(), tungstenite::Error>(())
         }
-
-        future::ok(())
     });
 
-    let receive_from_others = rx.map(Ok).forward(outgoing);
-
-    pin_mut!(broadcast_incoming, receive_from_others);
-    future::select(broadcast_incoming, receive_from_others).await;
-
-    println!("{} disconnected", &addr);
-    peer_map.lock().unwrap().remove(&addr);
+    broadcast_incoming.await.expect("Error processing messages");
 }

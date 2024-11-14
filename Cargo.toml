@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.41.1", features = ["full"] }
 tokio-tungstenite = "0.24"
+tokio-stream = "0.1"
 futures-util = "0.3"  # Required for StreamExt and SinkExt
 futures-channel = "0.3"  # Add this line
 url = "2"             # Required for parsing the URL
@@ -19,6 +20,6 @@ reqwest = { version = "0.12.9", features = ["json"] }
 warp = "0.3"
 
 [dev-dependencies]
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12.9", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0"

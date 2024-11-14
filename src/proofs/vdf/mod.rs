@@ -11,7 +11,6 @@ use winterfell::{
 
 use crate::proofs::{ProofGenerator, ProofVerifier};
 
-
 // Generation
 // ===========================================================================================
 // Example struct for `vdf` proof generation.

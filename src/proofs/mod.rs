@@ -1,10 +1,11 @@
 use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
-use stacks_voting::{SignatureData, StacksVotingProofGenrator, StacksVotingProofVerifier};
+use serde_with::{serde_as, DisplayFromStr, SerializeDisplay};
+use stacks_voting::{SignatureData, StacksVotingProofVerifier};
 use vdf::{VdfProofGenerator, VdfProofVerifier};  use core::fmt;
 // Import serde_with for handling u128
 use std::result::Result;
+use crate::stacks::{proofs::generate_proof, utils::Transaction};
 
 pub mod vdf;
 pub mod stacks_voting;
@@ -21,6 +22,11 @@ impl From<serde_json::Error> for Error {
         Error::SerializationError(err)
     }
 }
+impl From<warp::Rejection> for Error {
+    fn from(_rejection: warp::Rejection) -> Self {
+        Error::ProofGenerationError("Warp rejection occurred".to_string())
+    }
+}
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -34,7 +40,7 @@ pub trait ProofGenerator {
     fn generate_proof(start: u128, n: usize) -> (Vec<u8>, u128);
 }
 pub trait VotingProofGenerator {
-    fn generate_proof(data: SignatureData) -> (Vec<u8>, u128);
+    fn generate_proof(data: SignatureData, transactions: Vec<Transaction>) -> (Vec<u8>, u128);
 }
 
 
@@ -118,13 +124,12 @@ enum ProofVerificationMessage {
 }
 
 
-pub fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Error> {
+pub async fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Error> {
     // Deserialize the incoming JSON into ApplicationMessage
     let app_message: ApplicationMessage = serde_json::from_str(msg)?;
 
     match app_message {
         ApplicationMessage::ProofGeneration(proof_gen_msg) => {
-            // Match on specific proof type for generation
             match proof_gen_msg {
                 ProofGenerationMessage::VdfProof { start, n } => {
                     let (proof, result) = VdfProofGenerator::generate_proof(start, n);
@@ -140,14 +145,14 @@ pub fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Error> {
                     return Ok(application_response);
                 }
                 ProofGenerationMessage::StacksVotingProof { signature_data } => {
-                    let (proof, result) = StacksVotingProofGenrator::generate_proof(signature_data);
-                    let b64_proof = general_purpose::STANDARD.encode(proof);
-                    let response = ProofResponse::StacksVotingProof {
-                        result: result.to_string(),
-                        proof: b64_proof,
-                    };
-                    let application_response = ApplicationResponseMessage::ProofGenerationResponse(response);
-                    return Ok(application_response);
+                    let signature_data_clone = signature_data.clone();
+                    let response = generate_proof(signature_data_clone)
+                        .await
+                        .map_err(|e| Error::from(e))?; // Convert warp::Rejection to proofs::Error
+                    //let response_json = serde_json::to_string(&response)?;
+                    //let mut sender = Box::pin(sender); 
+                    //sender.send(Message::Text(response_json)).await?;
+                    return Ok(response)
                 }
             }
         }
@@ -187,3 +192,4 @@ pub fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Error> {
     let application_response: ApplicationResponseMessage = ApplicationResponseMessage::ProofGenerationResponse(response);
     return Ok(application_response);
 }
+

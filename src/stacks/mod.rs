@@ -1,8 +1,8 @@
 use warp::Filter;
 
 mod transactions;
-mod proofs;
-mod utils;
+pub mod proofs;
+pub mod utils;
 
 // Combines all Stacks-related routes
 pub fn stacks_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {

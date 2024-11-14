@@ -1,26 +1,28 @@
+use prover::WorkProver;
 use winterfell::math::StarkField;
 use winterfell::{
-    Air, AirContext, Assertion, AuxRandElements, DefaultConstraintEvaluator, EvaluationFrame, FieldExtension, Proof, TraceInfo, TransitionConstraintDegree
+    Air, AirContext, Assertion, EvaluationFrame, FieldExtension, TraceInfo, TransitionConstraintDegree
 };
 use winterfell::{
-    crypto::{hashers::Blake3_256, DefaultRandomCoin},
     math::{fields::f128::BaseElement, FieldElement, ToElements},
-    matrix::ColMatrix,
-    DefaultTraceLde, ProofOptions, Prover, StarkDomain, Trace, TracePolyTable, TraceTable,
+    ProofOptions, Prover, TraceTable,
 };
 use serde::{Deserialize, Serialize};
 
-use super::{ProofVerifier, VotingProofGenerator};
+use crate::stacks::utils::Transaction;
 
+use super::VotingProofGenerator;
+mod prover;
+mod verifier;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Domain {
     name: String,
     version: String,
     chain_id: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 
 pub struct MessageInputs {
     pub message: String,
@@ -31,7 +33,7 @@ pub struct MessageInputs {
     pub burn_end_height: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SignatureData {
     pub  message_inputs: MessageInputs,
     pub public_key: String,
@@ -48,18 +50,18 @@ pub struct SignatureData {
 pub struct StacksVotingProofGenrator;
 
 impl VotingProofGenerator for StacksVotingProofGenrator {
-    fn generate_proof(signature_data: SignatureData) -> (Vec<u8>, u128) {
-        generate_stacks_voting_proof(signature_data)
+    fn generate_proof(signature_data: SignatureData, transactions:Vec<Transaction>) -> (Vec<u8>, u128) {
+        generate_stacks_voting_proof(signature_data, transactions)
     }
 }
 
 // Define the proof1-specific proof generation function.
-fn generate_stacks_voting_proof(signature_data: SignatureData) -> (Vec<u8>, u128) {
+fn generate_stacks_voting_proof(signature_data: SignatureData, transactions:Vec<Transaction>) -> (Vec<u8>, u128) {
     // We'll just hard-code the parameters here for this example. We'll also just run the
     // computation just for 1024 steps to save time during testing.
-    let balance_at_height: BaseElement = BaseElement::new(signature_data.message_inputs.balance_at_height.into());
+    let x: BaseElement = BaseElement::new(signature_data.message_inputs.balance_at_height.into());
     //let address = "your_stacks_address_here";
-    let burn_start_height: usize = signature_data.message_inputs.burn_start_height.try_into().unwrap();
+    let h: usize = signature_data.message_inputs.burn_start_height.try_into().unwrap();
 
     // let transactions = match fetch_all_transactions(address) {
     //     Ok(transactions) => {
@@ -73,8 +75,8 @@ fn generate_stacks_voting_proof(signature_data: SignatureData) -> (Vec<u8>, u128
     // };
 
     // Build the execution trace and get the result from the last step.
-    let trace: TraceTable<BaseElement> = build_do_work_trace(balance_at_height, burn_start_height);
-    let result: BaseElement = trace.get(0, burn_start_height - 1);
+    let trace: TraceTable<BaseElement> = build_do_work_trace(x, h, transactions);
+    let result: BaseElement = trace.get(0, h - 1);
 
     // Define proof options; these will be enough for ~96-bit security level.
     let options = ProofOptions::new(
@@ -93,122 +95,22 @@ fn generate_stacks_voting_proof(signature_data: SignatureData) -> (Vec<u8>, u128
 
     (proof_bytes, result.as_int())
 
-    // The verifier will accept proofs with parameters which guarantee 95 bits or more of
-    // conjectured security
-    // let min_opts: winterfell::AcceptableOptions = winterfell::AcceptableOptions::MinConjecturedSecurity(95);
-
-    // Verify the proof. The number of steps and options are encoded in the proof itself,
-    // so we don't need to pass them explicitly to the verifier.
-    // let pub_inputs = PublicInputs { start, result };
-    // assert!(winterfell::verify::<WorkAir,
-    //     Blake3_256<BaseElement>,
-    //     DefaultRandomCoin<Blake3_256<BaseElement>>
-    //    >(proof, pub_inputs, &min_opts).is_ok());
-    // proof
 }
 
-pub struct StacksVotingProofVerifier;
-
-impl ProofVerifier for StacksVotingProofVerifier {
-    fn verify_proof(balance_at_height: u128, burn_start_height: u128, proof_in: Vec<u8>) -> bool {
-        // Your proof generation logic for `proof1`
-        // Call the `proof1` specific function (this is just an example)
-        verify_stacks_voting_proof(balance_at_height, burn_start_height, &proof_in)
-    }
-}
-
-fn verify_stacks_voting_proof(balance_at_height_in: u128, burn_start_height_in: u128, proof_in: &[u8]) -> bool {
-    // The verifier will accept proofs with parameters which guarantee 95 bits or more of
-    // conjectured security
-    let balance_at_height: BaseElement = BaseElement::new(balance_at_height_in);
-    let burn_start_height: BaseElement = BaseElement::new(burn_start_height_in);
-    let proof: Proof = Proof::from_bytes(proof_in).unwrap();
-    let min_opts = winterfell::AcceptableOptions::MinConjecturedSecurity(95);
-
-    // Verify the proof. The number of steps and options are encoded in the proof itself,
-    // so we don't need to pass them explicitly to the verifier.
-    let pub_inputs = PublicInputs { balance_at_height, burn_start_height };
-    winterfell::verify::<WorkAir,
-                                Blake3_256<BaseElement>,
-                                DefaultRandomCoin<Blake3_256<BaseElement>>
-                                >(proof, pub_inputs, &min_opts).is_ok()
-}
-
-
-// Prover Implementation
-// ===========================================================================================
-
-// Our prover needs to hold STARK protocol parameters which are specified via ProofOptions
-// struct.
-struct WorkProver {
-    options: ProofOptions
-}
-
-impl WorkProver {
-    pub fn new(options: ProofOptions) -> Self {
-        Self { options }
-    }
-}
-
-// When implementing the Prover trait we set the `Air` associated type to the AIR of the
-// computation we defined previously, and set the `Trace` associated type to `TraceTable`
-// struct as we don't need to define a custom trace for our computation. For other
-// associated types, we'll use default implementation provided by Winterfell.
-impl Prover for WorkProver {
-    type BaseField = BaseElement;
-    type Air = WorkAir;
-    type Trace = TraceTable<Self::BaseField>;
-    type HashFn = Blake3_256<Self::BaseField>;
-    type RandomCoin = DefaultRandomCoin<Self::HashFn>;
-    type TraceLde<E: FieldElement<BaseField = Self::BaseField>> = DefaultTraceLde<E, Self::HashFn>;
-    type ConstraintEvaluator<'a, E: FieldElement<BaseField = Self::BaseField>> =
-        DefaultConstraintEvaluator<'a, Self::Air, E>;
-
-    // Our public inputs consist of the first and last value in the execution trace.
-    fn get_pub_inputs(&self, trace: &Self::Trace) -> PublicInputs {
-        let last_step = trace.length() - 1;
-        PublicInputs {
-            balance_at_height: trace.get(0, 0),
-            burn_start_height: trace.get(0, last_step),
-        }
-    }
-
-    fn options(&self) -> &ProofOptions {
-        &self.options
-    }
-
-    fn new_trace_lde<E: FieldElement<BaseField = Self::BaseField>>(
-        &self,
-        trace_info: &TraceInfo,
-        main_trace: &ColMatrix<Self::BaseField>,
-        domain: &StarkDomain<Self::BaseField>,
-    ) -> (Self::TraceLde<E>, TracePolyTable<E>) {
-        DefaultTraceLde::new(trace_info, main_trace, domain)
-    }
-
-    fn new_evaluator<'a, E: FieldElement<BaseField = Self::BaseField>>(
-        &self,
-        air: &'a Self::Air,
-        aux_rand_elements: Option<AuxRandElements<E>>,
-        composition_coefficients: winterfell::ConstraintCompositionCoefficients<E>,
-    ) -> Self::ConstraintEvaluator<'a, E> {
-        DefaultConstraintEvaluator::new(air, aux_rand_elements, composition_coefficients)
-    }
-}
 
 // Air Implementation
 // ===========================================================================================
 
 // Public inputs for our computation will consist of the starting value and the end result.
 pub struct PublicInputs {
-    balance_at_height: BaseElement,
-    burn_start_height: BaseElement,
+    balance: BaseElement,
+    height: BaseElement,
 }
 
 // We need to describe how public inputs can be converted to field elements.
 impl ToElements<BaseElement> for PublicInputs {
     fn to_elements(&self) -> Vec<BaseElement> {
-        vec![self.balance_at_height, self.burn_start_height]
+        vec![self.balance, self.height]
     }
 }
 
@@ -217,8 +119,8 @@ impl ToElements<BaseElement> for PublicInputs {
 // internally by the Winterfell prover/verifier when interpreting this AIR.
 pub struct WorkAir {
     context: AirContext<BaseElement>,
-    target_balance: BaseElement, 
-    block_height: BaseElement,
+    start: BaseElement,
+    result: BaseElement,
 }
 
 impl Air for WorkAir {
@@ -251,8 +153,8 @@ impl Air for WorkAir {
 
         WorkAir {
             context: AirContext::new(trace_info, degrees, num_assertions, options),
-            target_balance: pub_inputs.balance_at_height,
-            block_height: pub_inputs.burn_start_height,
+            start: pub_inputs.balance,
+            result: pub_inputs.height,
         }
     }
 
@@ -283,8 +185,8 @@ impl Air for WorkAir {
         // starting value, and at the last step it must be equal to the result.
         let last_step = self.trace_length() - 1;
         vec![
-            Assertion::single(0, 0, self.target_balance),
-            Assertion::single(0, last_step, self.block_height),
+            Assertion::single(0, 0, self.start),
+            Assertion::single(0, last_step, self.result),
         ]
     }
 
@@ -299,36 +201,55 @@ impl Air for WorkAir {
 // Work function with trace recording
 // ===========================================================================================
 
-// fn initialize_trace_table(balance: u64, block_height: u64) -> TraceTable<BaseElement> {
-//     let trace_width = 2; // Adjust based on the columns needed
-//     let mut trace = TraceTable::new(trace_width, 1); // 1 row initially, can expand as needed
+fn initialize_trace_table(balance: usize, transaction_length: usize) -> TraceTable<BaseElement> {
+    //let trace_width = 2; // Adjust based on the columns needed
+    let mut trace = TraceTable::new(balance, transaction_length); // 1 row initially, can expand as needed
 
-//     trace.set(0, 0, BaseElement::new(balance.into()));         // Balance column
-//     trace.set(1, 0, BaseElement::new(block_height.into()));    // Block height column
+    trace.set(0, 0, BaseElement::new(transaction_length as u128));         // Balance column
+    //trace.set(1, 0, BaseElement::new(block_height.into()));    // Block height column
 
-//     trace
-// }
+    trace
+}
 
-pub fn build_do_work_trace(start: BaseElement, n: usize) -> TraceTable<BaseElement> {
+pub fn build_do_work_trace(balance: BaseElement, height: usize, transactions:Vec<Transaction>) -> TraceTable<BaseElement> {
     // Instantiate the trace with a given width and length; this will allocate all
     // required memory for the trace
-    let trace_width = 1;
-    //let fTrace = initialize_trace_table(trace_width, n.try_into().unwrap());
+    let trace_width: usize = 1;
+    let trace_length = transactions.len(); // Ensure the trace is long enough to reach h
+    //let mut trace: TraceTable<&BaseElement> = TraceTable::new(trace_width, trace_length);
+    let mut trace = initialize_trace_table(trace_width, trace_length.try_into().unwrap());
 
-    let mut trace = TraceTable::new(trace_width.try_into().unwrap(), n);
-
-    // Fill the trace with data; the first closure initializes the first state of the
-    // computation; the second closure computes the next state of the computation based
-    // on its current state.
     trace.fill(
         |state| {
-            state[0] = start;
+            // Set the initial state to the starting balance
+            state[0] = balance;
         },
-        |_, state| {
-            state[0] = state[0].exp(3u32.into()) + BaseElement::new(42);
+        |step: usize, state| {
+            // Retrieve the current transaction if it exists for this step
+            let mut current_balance = state[0];
+            if step < transactions.len() {
+                let transaction = &transactions[step];
+
+                // Convert stx_sent and stx_received to BaseElement
+                let stx_sent = BaseElement::new(transaction.stx_sent.parse::<u128>().unwrap());
+                let stx_received = BaseElement::new(transaction.stx_received.parse::<u128>().unwrap());
+
+                // Update balance based on the transaction
+                current_balance = current_balance - stx_sent + stx_received;
+
+                // Only update the state until we reach or exceed the target block height h
+                if transaction.tx.block_height >= height as u64 {
+                    state[0] = current_balance;
+                } else {
+                    // For heights below h, continue accumulating the balance
+                    state[0] = current_balance;
+                }
+            } else {
+                // If we’re beyond the transactions list, maintain the current balance
+                state[0] = current_balance;
+            }
         },
     );
-
     trace
 }
 // pub fn build_balance_trace(
