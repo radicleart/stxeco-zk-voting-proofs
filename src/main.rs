@@ -15,7 +15,6 @@ use tokio_tungstenite::tungstenite::{self, protocol::Message};
 mod proofs;
 pub mod stacks;
 
-type Tx = UnboundedSender<Message>;
 type IoResult<T> = std::io::Result<T>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, UnboundedSender<Message>>>>;
 //type PeerMap = Arc<Mutex<HashMap<SocketAddr, tokio::sync::mpsc::UnboundedSender<tungstenite::Message>>>>;
@@ -31,7 +30,7 @@ async fn main() -> Result<(), IoError> {
     println!("WebSocket server listening on: {}", addr);
 
     // Initialize routes with the shared state
-    let http_state = ws_state.clone();
+    let _http_state = ws_state.clone();
     let routes = stacks::stacks_routes();
 
     // Start the Warp server for HTTP endpoints concurrently with the WebSocket server
@@ -60,10 +59,10 @@ async fn handle_ws_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: So
         .expect("Error during the websocket handshake occurred");
     println!("WebSocket connection established: {}", addr);
 
-    let (tx, rx) = unbounded();
+    let (tx, _rx) = unbounded();
     peer_map.lock().unwrap().insert(addr, tx);
 
-    let (outgoing, incoming) = ws_stream.split();
+    let (_outgoing, incoming) = ws_stream.split();
     //let outgoing = Arc::new(Mutex::new(outgoing));  // Wrap `outgoing` in Arc<Mutex<...>> here
 
     // Process incoming messages and respond asynchronously

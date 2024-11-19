@@ -5,9 +5,7 @@ use winterfell::{
     DefaultConstraintEvaluator, DefaultTraceLde, ProofOptions, Prover, StarkDomain, Trace,
     TraceInfo, TracePolyTable, TraceTable,
 };
-use winterfell::{
-    Air, AuxRandElements
-};
+use winterfell::AuxRandElements;
 
 use super::{PublicInputs, WorkAir};
 
@@ -44,8 +42,8 @@ impl Prover for WorkProver {
     fn get_pub_inputs(&self, trace: &Self::Trace) -> PublicInputs {
         let last_step = trace.length() - 1;
         PublicInputs {
-            start: trace.get(0, 0),
-            result: trace.get(0, last_step),
+            balance: trace.get(0, 0),
+            height: trace.get(0, last_step),
         }
     }
 
@@ -115,7 +113,7 @@ impl Prover for WorkProver {
 //         let last_step = trace.length() - 1;
 //         PublicInputs {
 //             balance_at_height: trace.get(0, 0),
-//             burn_start_height: trace.get(0, last_step),
+//             block_proof_height: trace.get(0, last_step),
 //         }
 //     }
 

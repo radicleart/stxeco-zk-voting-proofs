@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, SerializeDisplay};
+use serde_with::{serde_as, DisplayFromStr};
 use stacks_voting::{SignatureData, StacksVotingProofVerifier};
 use vdf::{VdfProofGenerator, VdfProofVerifier};  use core::fmt;
 // Import serde_with for handling u128

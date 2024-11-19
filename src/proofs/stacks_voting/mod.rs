@@ -1,7 +1,8 @@
 use prover::WorkProver;
+use utils::pad_to_power_of_two;
 use winterfell::math::StarkField;
 use winterfell::{
-    Air, AirContext, Assertion, EvaluationFrame, FieldExtension, TraceInfo, TransitionConstraintDegree
+    Air, AirContext, Assertion, EvaluationFrame, FieldExtension, Trace, TraceInfo, TransitionConstraintDegree
 };
 use winterfell::{
     math::{fields::f128::BaseElement, FieldElement, ToElements},
@@ -14,6 +15,7 @@ use crate::stacks::utils::Transaction;
 use super::VotingProofGenerator;
 mod prover;
 mod verifier;
+mod utils;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Domain {
@@ -29,8 +31,8 @@ pub struct MessageInputs {
     pub vote: String,
     pub proposal: String,
     pub balance_at_height: u64,
-    pub burn_start_height: u64,
-    pub burn_end_height: u64,
+    pub block_proof_height: u64,
+    pub voting_end_height: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -48,6 +50,7 @@ pub struct SignatureData {
 
 // Example struct for `proof1` proof generation.
 pub struct StacksVotingProofGenrator;
+pub struct StacksVotingProofVerifier;
 
 impl VotingProofGenerator for StacksVotingProofGenrator {
     fn generate_proof(signature_data: SignatureData, transactions:Vec<Transaction>) -> (Vec<u8>, u128) {
@@ -61,22 +64,11 @@ fn generate_stacks_voting_proof(signature_data: SignatureData, transactions:Vec<
     // computation just for 1024 steps to save time during testing.
     let x: BaseElement = BaseElement::new(signature_data.message_inputs.balance_at_height.into());
     //let address = "your_stacks_address_here";
-    let h: usize = signature_data.message_inputs.burn_start_height.try_into().unwrap();
+    let h: usize = signature_data.message_inputs.block_proof_height.try_into().unwrap();
 
-    // let transactions = match fetch_all_transactions(address) {
-    //     Ok(transactions) => {
-    //         println!("Fetched {} transactions", transactions.len());
-    //         transactions
-    //     },
-    //     Err(e) => {
-    //         eprintln!("Error fetching transactions: {}", e);
-    //         vec![]
-    //     }
-    // };
-
-    // Build the execution trace and get the result from the last step.
-    let trace: TraceTable<BaseElement> = build_do_work_trace(x, h, transactions);
-    let result: BaseElement = trace.get(0, h - 1);
+    let padded_transactions:Vec<Transaction> = pad_to_power_of_two(transactions);
+    let trace: TraceTable<BaseElement> = build_do_work_trace(x, h, padded_transactions);
+    let result: BaseElement = trace.get(1, trace.length() - 1);
 
     // Define proof options; these will be enough for ~96-bit security level.
     let options = ProofOptions::new(
@@ -212,41 +204,46 @@ fn initialize_trace_table(balance: usize, transaction_length: usize) -> TraceTab
 }
 
 pub fn build_do_work_trace(balance: BaseElement, height: usize, transactions:Vec<Transaction>) -> TraceTable<BaseElement> {
-    // Instantiate the trace with a given width and length; this will allocate all
-    // required memory for the trace
-    let trace_width: usize = 1;
-    let trace_length = transactions.len(); // Ensure the trace is long enough to reach h
-    //let mut trace: TraceTable<&BaseElement> = TraceTable::new(trace_width, trace_length);
+    let trace_width: usize = 2; // one column for balance the other for "is_real" indicator on tx (cf power of 2 constraint on length)
+    let trace_length = transactions.len();
     let mut trace = initialize_trace_table(trace_width, trace_length.try_into().unwrap());
 
     trace.fill(
         |state| {
             // Set the initial state to the starting balance
             state[0] = balance;
+            state[1] = BaseElement::new(0);
         },
         |step: usize, state| {
             // Retrieve the current transaction if it exists for this step
             let mut current_balance = state[0];
             if step < transactions.len() {
                 let transaction = &transactions[step];
-
-                // Convert stx_sent and stx_received to BaseElement
-                let stx_sent = BaseElement::new(transaction.stx_sent.parse::<u128>().unwrap());
-                let stx_received = BaseElement::new(transaction.stx_received.parse::<u128>().unwrap());
-
-                // Update balance based on the transaction
-                current_balance = current_balance - stx_sent + stx_received;
-
-                // Only update the state until we reach or exceed the target block height h
-                if transaction.tx.block_height >= height as u64 {
+                if transaction.tx.tx_id == "0" {
+                    // Maintain the current balance, mark as dummy
                     state[0] = current_balance;
+                    state[1] = BaseElement::new(0);
                 } else {
-                    // For heights below h, continue accumulating the balance
-                    state[0] = current_balance;
+                    // Convert stx_sent and stx_received to BaseElement
+                    let stx_sent = BaseElement::new(transaction.stx_sent.parse::<u128>().unwrap());
+                    let stx_received = BaseElement::new(transaction.stx_received.parse::<u128>().unwrap());
+
+                    // Update balance based on the transaction
+                    current_balance = current_balance - stx_sent + stx_received;
+
+                    // Only update the state until we reach or exceed the target block height h
+                    if transaction.tx.block_height >= height as u64 {
+                        state[0] = current_balance;
+                    } else {
+                        // For heights below h, continue accumulating the balance
+                        state[0] = current_balance;
+                    }
+                    state[1] = BaseElement::new(1);
                 }
             } else {
                 // If we’re beyond the transactions list, maintain the current balance
                 state[0] = current_balance;
+                state[1] = BaseElement::new(0);
             }
         },
     );

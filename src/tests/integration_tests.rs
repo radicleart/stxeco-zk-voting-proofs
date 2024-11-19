@@ -28,8 +28,8 @@ async fn test_generate_proof_endpoint() {
             "vote": "for",
             "proposal": "SIP-028",
             "balance_at_height": 100,
-            "burn_start_height": 50,
-            "burn_end_height": 60
+            "block_proof_height": 50,
+            "voting_end_height": 60
         },
         "public_key": "02abcd...",
         "hash": "245172c...",
