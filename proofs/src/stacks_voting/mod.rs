@@ -1,4 +1,7 @@
+use base64::{engine::general_purpose, Engine};
 use prover::WorkProver;
+use stacks_blockchain_utils::{fetch_all_transactions, public_key_to_stacks_address};
+use types::{SignatureData, Transaction};
 use utils::pad_to_power_of_two;
 use winterfell::math::StarkField;
 use winterfell::{
@@ -8,42 +11,36 @@ use winterfell::{
     math::{fields::f128::BaseElement, FieldElement, ToElements},
     ProofOptions, Prover, TraceTable,
 };
-use serde::{Deserialize, Serialize};
 
-use crate::stacks::utils::Transaction;
+pub async fn generate_proof(signature_data: SignatureData) -> Result<ApplicationResponseMessage, ProofsError> {
+    let public_key = signature_data.public_key.clone();
+    
+    let stacks_address = public_key_to_stacks_address(public_key)?;
+
+    let transactions = fetch_all_transactions(&stacks_address).await?;
+
+    let (proof, result) = StacksVotingProofGenrator::generate_proof(signature_data, transactions);
+
+    let b64_proof = general_purpose::STANDARD.encode(proof);
+
+    // Prepare response
+    let response = ProofResponse::StacksVotingProof {
+        result: result.to_string(),
+        proof: b64_proof,
+    };
+    let application_response = ApplicationResponseMessage::ProofGenerationResponse(response);
+    println!("Message: {}", stacks_address);
+    Ok(application_response)
+}
+
+use crate::{ApplicationResponseMessage, ProofResponse, ProofsError};
 
 use super::VotingProofGenerator;
 mod prover;
 mod verifier;
 mod utils;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Domain {
-    name: String,
-    version: String,
-    chain_id: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-
-pub struct MessageInputs {
-    pub message: String,
-    pub vote: String,
-    pub proposal: String,
-    pub balance_at_height: u64,
-    pub block_proof_height: u64,
-    pub voting_end_height: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SignatureData {
-    pub  message_inputs: MessageInputs,
-    pub public_key: String,
-    pub hash: String,
-    pub signature: String,
-    pub message: String,
-    pub domain: Option<Domain>,
-}
+pub mod stacks_blockchain_utils;
+pub mod types;
 
 // Generation
 // ===========================================================================================

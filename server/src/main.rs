@@ -1,4 +1,3 @@
-use proofs::handle_message;
 use std::{
     collections::HashMap,
     io::Error as IoError,
@@ -9,10 +8,10 @@ use std::{
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{stream::TryStreamExt, StreamExt};
 
+use proofs::handle_message;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::{self, protocol::Message};
 
-mod proofs;
 pub mod stacks;
 
 type IoResult<T> = std::io::Result<T>;
@@ -35,8 +34,8 @@ async fn main() -> Result<(), IoError> {
 
     // Start the Warp server for HTTP endpoints concurrently with the WebSocket server
     tokio::select! {
-        _ = run_websocket_server(listener, ws_state.clone()) => {},
         _ = warp::serve(routes).run(([127, 0, 0, 1], 3030)) => {},
+        _ = run_websocket_server(listener, ws_state.clone()) => {},
     }
 
     Ok(())

@@ -1,13 +1,13 @@
 use base64::{engine::general_purpose, Engine};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-use stacks_voting::{SignatureData, StacksVotingProofVerifier};
-use vdf::{VdfProofGenerator, VdfProofVerifier};  use core::fmt;
+use stacks_voting::{generate_proof, types::{SignatureData, Transaction}, StacksVotingProofVerifier};
+use vdf0::{VdfProofGenerator, VdfProofVerifier};
+use core::fmt;
 // Import serde_with for handling u128
 use std::result::Result;
-use crate::stacks::{proofs::generate_proof, utils::Transaction};
 
-pub mod vdf;
+pub mod vdf0; 
 pub mod stacks_voting;
 
 // Assuming you are using some kind of error type, define it or use a generic one
@@ -22,11 +22,6 @@ impl From<serde_json::Error> for Error {
         Error::SerializationError(err)
     }
 }
-impl From<warp::Rejection> for Error {
-    fn from(_rejection: warp::Rejection) -> Self {
-        Error::ProofGenerationError("Warp rejection occurred".to_string())
-    }
-}
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -35,6 +30,7 @@ impl fmt::Display for Error {
         }
     }
 }
+
 
 pub trait ProofGenerator {
     fn generate_proof(start: u128, n: usize) -> (Vec<u8>, u128);
@@ -88,9 +84,6 @@ enum ProofGenerationMessage {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "proof_type")]  // Nested message type for proof generation
 pub enum ProofResponse {
-    ProofError {
-        message: String,
-    },
     VdfProof {
         result: String,
         proof: String
@@ -124,9 +117,14 @@ enum ProofVerificationMessage {
 }
 
 
-pub async fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Error> {
+pub async fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, ProofsError> {
     // Deserialize the incoming JSON into ApplicationMessage
-    let app_message: ApplicationMessage = serde_json::from_str(msg)?;
+    if msg.is_empty() {
+        return Err(ProofsError::new("Empty message"));
+    }
+    let app_message: ApplicationMessage = serde_json::from_str(msg)
+        .map_err(|e| ProofsError::new(&format!("Failed to parse message: {}", e)))?;
+
 
     match app_message {
         ApplicationMessage::ProofGeneration(proof_gen_msg) => {
@@ -134,11 +132,11 @@ pub async fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Err
                 ProofGenerationMessage::VdfProof { start, n } => {
                     let (proof, result) = VdfProofGenerator::generate_proof(start, n);
                     if proof.is_empty() {
-                        return Err(Error::ProofGenerationError("Proof generation failed".to_string()));
+                        return Err(ProofsError("Proof generation failed".to_string()));
                     }
-                                    let b64_proof = general_purpose::STANDARD.encode(proof);
+                    let b64_proof = general_purpose::STANDARD.encode(proof);
                     let response: ProofResponse = ProofResponse::VdfProof {
-                        result: result.to_string(),            // Result from the proof generation
+                        result: result.to_string(),
                         proof: b64_proof,
                     };
                     let application_response: ApplicationResponseMessage = ApplicationResponseMessage::ProofGenerationResponse(response);
@@ -148,10 +146,7 @@ pub async fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Err
                     let signature_data_clone = signature_data.clone();
                     let response = generate_proof(signature_data_clone)
                         .await
-                        .map_err(|e| Error::from(e))?; // Convert warp::Rejection to proofs::Error
-                    //let response_json = serde_json::to_string(&response)?;
-                    //let mut sender = Box::pin(sender); 
-                    //sender.send(Message::Text(response_json)).await?;
+                        .map_err(|e| ProofsError::new(&format!("Failed to parse message: {}", e)))?;
                     return Ok(response)
                 }
             }
@@ -184,12 +179,20 @@ pub async fn handle_message(msg: &str) -> Result<ApplicationResponseMessage, Err
             ()
         }
     }
-
-    let message:String = "oops".to_string();
-    let response: ProofResponse = ProofResponse::ProofError {
-        message,
-    };
-    let application_response: ApplicationResponseMessage = ApplicationResponseMessage::ProofGenerationResponse(response);
-    return Ok(application_response);
+    return Err(ProofsError("no match: ".to_string()));
 }
 
+
+#[derive(Debug)]
+pub struct ProofsError(String);
+
+impl ProofsError {
+    pub fn new(msg: &str) -> Self {
+        ProofsError(msg.to_string())
+    }
+}
+impl fmt::Display for ProofsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}

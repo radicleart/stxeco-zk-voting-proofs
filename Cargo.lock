@@ -1279,6 +1279,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "proofs"
+version = "0.1.0"
+dependencies = [
+ "base58check",
+ "base64 0.22.1",
+ "futures-channel",
+ "futures-util",
+ "hex",
+ "reqwest",
+ "ripemd",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "serde_with",
+ "sha2 0.10.8",
+ "stacks-rs",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.24.0",
+ "url",
+ "winterfell",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2516,9 +2540,11 @@ version = "0.1.0"
 dependencies = [
  "base58check",
  "base64 0.22.1",
+ "bytes",
  "futures-channel",
  "futures-util",
  "hex",
+ "proofs",
  "reqwest",
  "ripemd",
  "serde",

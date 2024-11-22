@@ -1,14 +1,6 @@
-use warp::{reject::Reject, Filter};
+use proofs::stacks_voting::stacks_blockchain_utils::fetch_all_transactions;
+use warp::Filter;
 
-use super::utils::fetch_all_transactions;
-
-#[derive(Debug)]
-pub struct TransactionFetchError {
-    pub message: String,
-}
-
-// Implement Reject for TransactionFetchError
-impl Reject for TransactionFetchError {}
 
 pub fn transactions_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("transactions")

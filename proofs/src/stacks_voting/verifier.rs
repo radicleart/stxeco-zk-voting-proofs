@@ -1,7 +1,8 @@
-use crate::proofs::ProofVerifier;
 use winterfell::{
     crypto::{hashers::Blake3_256, DefaultRandomCoin}, math::fields::f128::BaseElement, Proof
 };
+
+use crate::ProofVerifier;
 
 use super::{PublicInputs, StacksVotingProofVerifier, WorkAir};
 

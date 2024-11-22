@@ -9,7 +9,8 @@ use winterfell::{
     DefaultTraceLde, ProofOptions, Prover, StarkDomain, Trace, TracePolyTable, TraceTable,
 };
 
-use crate::proofs::{ProofGenerator, ProofVerifier};
+use crate::{ProofGenerator, ProofVerifier};
+
 
 // Generation
 // ===========================================================================================

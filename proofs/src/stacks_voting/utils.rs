@@ -1,4 +1,17 @@
-use crate::stacks::utils::{Transaction, TransactionDetails};
+use crate::ProofsError;
+
+use super::types::{ApiResponse, Transaction, TransactionDetails};
+
+pub async fn fetch_and_parse(url: &str) -> Result<ApiResponse, ProofsError> {
+    let response: ApiResponse = reqwest::get(url)
+        .await
+        .map_err(|e| ProofsError::new(&format!("Error fetching URL {}: {}", url, e)))?
+        .json::<ApiResponse>()
+        .await
+        .map_err(|e| ProofsError::new(&format!("Error parsing JSON from {}: {}", url, e)))?;
+    
+    Ok(response)
+}
 
 pub fn pad_to_power_of_two(transactions: Vec<Transaction>) -> Vec<Transaction> {
     let current_length = transactions.len();
